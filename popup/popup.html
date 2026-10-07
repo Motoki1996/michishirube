@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>michishirube</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>みちしるべ</h1>
+    <button id="create" class="btn primary">ツアーを作成</button>
+  </header>
+
+  <div id="message" class="message" hidden></div>
+
+  <section>
+    <h2>保存済みのツアー</h2>
+    <ul id="tours" class="tours"></ul>
+    <p id="empty" class="empty" hidden>ツアーはまだありません。</p>
+  </section>
+
+  <section>
+    <button id="import" class="btn">JSONをインポート</button>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+  </section>
+
+  <script src="../lib/schema.js"></script>
+  <script src="../lib/storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

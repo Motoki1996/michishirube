@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>michishirube 動作確認ページ</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 0 auto; padding: 24px; }
+    nav a { margin-right: 12px; }
+    fieldset { margin: 16px 0; }
+    label { display: block; margin: 8px 0; }
+    input, select, textarea { padding: 4px 6px; }
+    .spacer { height: 900px; background: linear-gradient(#fff, #eef); display: flex; align-items: end; padding: 12px; }
+    .result { margin-top: 12px; padding: 8px; background: #efe; display: none; }
+  </style>
+</head>
+<body>
+  <h1>社員登録フォーム（デモ）</h1>
+
+  <nav>
+    <a href="#help" data-testid="nav-help">ヘルプ</a>
+    <a href="#about">このページについて</a>
+  </nav>
+
+  <form id="register-form" action="#" onsubmit="event.preventDefault(); document.getElementById('result').style.display = 'block';">
+    <fieldset>
+      <legend>基本情報</legend>
+      <label>氏名
+        <input type="text" name="fullname" placeholder="山田 太郎">
+      </label>
+      <label>メールアドレス
+        <!-- ランダムっぽいid: 要素特定では使われず、name属性などが使われるはず -->
+        <input type="email" id="input-83920174" name="email" aria-label="メールアドレス">
+      </label>
+      <label>部署
+        <select name="department">
+          <option>営業部</option>
+          <option>開発部</option>
+          <option>総務部</option>
+        </select>
+      </label>
+      <label><input type="checkbox" name="agree"> 利用規約に同意する</label>
+    </fieldset>
+
+    <button type="submit" id="submit-button">登録する</button>
+    <button type="reset">クリア</button>
+  </form>
+
+  <div class="result" id="result">登録しました（デモなので何も送信されません）</div>
+
+  <p>ページの下の方には、スクロールが必要な要素があります。</p>
+  <div class="spacer">
+    <button type="button" data-testid="bottom-button" onclick="alert('下のボタンが押されました')">ページ下部のボタン</button>
+  </div>
+
+  <h2 id="help">ヘルプ</h2>
+  <p>これは michishirube の動作確認用のページです。</p>
+  <h2 id="about">このページについて</h2>
+  <p>外部通信は一切行いません。</p>
+</body>
+</html>
