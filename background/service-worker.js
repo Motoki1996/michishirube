@@ -48,5 +48,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
     return true;
   }
+
+  // 再生中の位置を保存する（ページが切り替わっても、ポップアップから続きを再生できるようにする）
+  if (msg.type === 'michishirube:playback-save') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId === undefined) return false;
+    (async () => {
+      const result = globalThis.Michishirube.schema.validateTour(msg.tour);
+      const index = msg.index;
+      if (!result.ok || !Number.isInteger(index) || index < 0 || index >= result.tour.steps.length) {
+        sendResponse({ ok: false, error: '再生位置が正しくありません' });
+        return;
+      }
+      await globalThis.Michishirube.storage.setPlayback(tabId, {
+        tour: result.tour,
+        index,
+        interactive: msg.interactive === true,
+        updatedAt: new Date().toISOString(),
+      });
+      sendResponse({ ok: true });
+    })().catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+    return true;
+  }
+
+  if (msg.type === 'michishirube:playback-clear') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId === undefined) return false;
+    globalThis.Michishirube.storage.clearPlayback(tabId)
+      .then(() => sendResponse({ ok: true }))
+      .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+    return true;
+  }
   return false;
+});
+
+// タブを閉じたら、そのタブの再生位置を消す
+chrome.tabs.onRemoved.addListener((tabId) => {
+  globalThis.Michishirube.storage.clearPlayback(tabId).catch(() => {});
 });

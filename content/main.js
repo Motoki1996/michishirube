@@ -40,6 +40,15 @@
       stop();
       current = M.player.start(tour, { interactive: true, onExit: () => { current = null; } });
     },
+    // ページ遷移などで中断された再生を、保存された手順から続ける。playback: { tour, index, interactive }
+    resumePlay(playback) {
+      stop();
+      current = M.player.start(playback.tour, {
+        interactive: Boolean(playback.interactive),
+        startIndex: playback.index,
+        onExit: () => { current = null; },
+      });
+    },
     stop,
   };
 })();

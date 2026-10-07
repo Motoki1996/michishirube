@@ -12,6 +12,8 @@
   const FIND_INTERVAL_MS = 200;
   // 操作後、ページ側の反応（メニューが開くなど）を待ってから次へ進む時間
   const ADVANCE_DELAY_MS = 350;
+  // 表示中の要素を見張る間隔（SPAで要素が作り直された・動いた場合に追従する）
+  const WATCH_INTERVAL_MS = 500;
 
   // 値の変更（change）で完了とみなす要素か。それ以外はクリックで完了とする
   const NO_CHANGE_INPUT = ['checkbox', 'radio', 'button', 'submit', 'reset', 'image'];
@@ -33,6 +35,15 @@
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  async function send(msg) {
+    try {
+      return await chrome.runtime.sendMessage(msg);
+    } catch (_) {
+      return null; // 拡張機能が再読み込みされた場合など。再生自体は続ける
+    }
+  }
+
+  // opts: { interactive, startIndex（続きから再生する手順番号）, onExit }
   function start(tour, opts) {
     const interactive = Boolean(opts && opts.interactive);
     const layer = M.createLayer();
@@ -40,9 +51,19 @@
 
     let index = 0;
     let targetEl = null;
+    let looseMatch = false; // targetEl が表示テキストのゆるい一致で見つかった
     let done = false; // 操作して再生: 全手順を終えた
     let advancing = false; // 次の手順へ進む待機中（二重進行を防ぐ）
+    let searching = false; // show() で要素を探している最中
     let token = 0; // 古い show() の結果を捨てるための番号
+
+    // ---------- 再生位置の保存（ページが切り替わったら、ポップアップから続きを再生できる） ----------
+    function savePosition(i) {
+      send({ type: 'michishirube:playback-save', tour, index: i, interactive });
+    }
+    function clearPosition() {
+      send({ type: 'michishirube:playback-clear' });
+    }
 
     // ページ操作を止める透明な板（見て再生のみ）、全面の暗幕（要素が無いとき用）、スポットライト、吹き出し
     const dim = h('div', { class: 'dim' });
@@ -109,28 +130,39 @@
 
     // ---------- 手順の表示 ----------
     // 操作して再生では、操作直後に現れる要素を少し待って探す
+    // 戻り値: { el, loose }（locator.findDetailed と同じ）
     async function findTarget(step, my) {
-      let el = M.locator.find(step.target);
-      if (el || !interactive) return el;
+      let res = M.locator.findDetailed(step.target);
+      if (res.el || !interactive) return res;
       const until = Date.now() + FIND_TIMEOUT_MS;
-      while (!el && Date.now() < until) {
+      while (!res.el && Date.now() < until) {
         await sleep(FIND_INTERVAL_MS);
-        if (my !== token) return null;
-        el = M.locator.find(step.target);
+        if (my !== token) return res;
+        res = M.locator.findDetailed(step.target);
       }
-      return el;
+      return res;
     }
 
     async function show(i) {
       index = i;
       advancing = false;
+      savePosition(i);
       const my = ++token;
       const step = tour.steps[i];
+      searching = true;
       const found = await findTarget(step, my);
       if (my !== token) return; // 待っている間に別の手順へ移った
-      targetEl = found;
+      searching = false;
+      targetEl = found.el;
+      looseMatch = found.loose;
       if (targetEl) targetEl.scrollIntoView({ block: 'center', inline: 'center' });
+      renderTip();
+    }
 
+    // 現在の手順（index）の吹き出しを描く
+    function renderTip() {
+      const i = index;
+      const step = tour.steps[i];
       const notices = [];
       if (!sameUrl(step.url, location.href)) {
         const urlCode = h('code', { text: step.url });
@@ -142,7 +174,13 @@
       }
       if (!targetEl) {
         notices.push(h('p', { class: 'notice err', text: 'この手順の要素が見つかりません' }));
-      } else if (interactive) {
+      } else if (looseMatch) {
+        notices.push(h('p', {
+          class: 'notice',
+          text: `記録時と表示が少し違う要素を案内しています。違う場合は「${interactive ? 'スキップ' : '次へ'}」で進んでください`,
+        }));
+      }
+      if (targetEl && interactive) {
         const how = completesOnChange(targetEl)
           ? 'ハイライトされた項目に入力・選択すると、次へ進みます（入力はEnterか枠外クリックで確定）'
           : 'ハイライトされた要素を実際にクリックすると、次へ進みます';
@@ -170,10 +208,39 @@
       placeTip();
     }
 
+    // 表示中の要素を見張る。
+    // SPAの再描画で要素が作り直された（ページから外れた）ときや、最初に見つからなかった要素が後から現れたときは探し直す
+    function watch() {
+      if (done || searching || advancing) return; // 操作直後は要素が消えても次の手順へ進むので見ない
+      if (targetEl && targetEl.isConnected) {
+        reposition(); // アニメーションなどで要素が動いた場合に追従する
+        return;
+      }
+      const wasFound = Boolean(targetEl);
+      const wasLoose = looseMatch;
+      const { el, loose } = M.locator.findDetailed(tour.steps[index].target);
+      if (!el && !wasFound) return;
+      targetEl = el;
+      looseMatch = loose;
+      if (el && !wasFound) {
+        // 「見つかりません」の表示を消すため吹き出しを描き直す
+        el.scrollIntoView({ block: 'center', inline: 'center' });
+        renderTip();
+      } else if (!el) {
+        renderTip(); // 要素が消えた
+      } else if (loose !== wasLoose) {
+        renderTip(); // 作り直された要素で、見つかり方（ゆるい一致かどうか）が変わった
+      } else {
+        reposition(); // 同じ要素が作り直された
+      }
+    }
+    const watchTimer = setInterval(watch, WATCH_INTERVAL_MS);
+
     function showDone() {
       done = true;
       token++;
       targetEl = null;
+      clearPosition();
       tipHost.textContent = '';
       tipHost.append(
         h('div', { class: 'tip' }, [
@@ -207,6 +274,9 @@
     function advanceSoon() {
       if (advancing || done) return;
       advancing = true;
+      // リンクや送信ボタンでページが切り替わる場合に備え、先に「次の手順」を再生位置として保存しておく
+      if (index < tour.steps.length - 1) savePosition(index + 1);
+      else clearPosition();
       const my = token;
       setTimeout(() => {
         if (my === token) next();
@@ -248,8 +318,11 @@
       window.addEventListener('change', onActionChange, true);
     }
 
+    // 終了・完了・別のモードの開始で呼ばれる（ページ遷移では呼ばれないので、再生位置は残る）
     function destroy() {
       token++;
+      clearInterval(watchTimer);
+      clearPosition();
       window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('scroll', reposition, true);
       window.removeEventListener('resize', reposition, true);
@@ -259,7 +332,8 @@
       layer.destroy();
     }
 
-    show(0);
+    const startIndex = opts && Number.isInteger(opts.startIndex) ? opts.startIndex : 0;
+    show(Math.min(Math.max(startIndex, 0), tour.steps.length - 1));
     return { destroy };
   }
 

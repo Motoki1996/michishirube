@@ -74,7 +74,7 @@
     await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
   }
 
-  // method: 'startCreate' | 'startRecord' | 'play' | 'playInteractive'。arg はそのメソッドに渡す値
+  // method: 'startCreate' | 'startRecord' | 'play' | 'playInteractive' | 'resumePlay'。arg はそのメソッドに渡す値
   async function runInTab(method, arg) {
     try {
       const tab = await getActiveTab();
@@ -204,6 +204,47 @@
     box.hidden = false;
   }
 
+  // ---------- 再生の続き（ページ遷移などで中断された再生） ----------
+  async function renderPlayback() {
+    const box = $('playback');
+    let tab;
+    try {
+      tab = await getActiveTab();
+    } catch (_) {
+      box.hidden = true;
+      return;
+    }
+    const p = await storage.getPlayback(tab.id);
+    if (!p) {
+      box.hidden = true;
+      return;
+    }
+    const total = p.tour.steps.length;
+    const mode = p.interactive ? '操作して再生' : '見て再生';
+    box.textContent = '';
+    box.append(el('div', { text: `「${p.tour.name}」を${mode}中です（${p.index + 1} / ${total}手順目から）` }));
+    box.append(
+      el('div', { class: 'row' }, [
+        el('button', {
+          class: 'btn small primary', text: '続きを再生',
+          onclick: () => runInTab('resumePlay', p),
+        }),
+        el('button', {
+          class: 'btn small', text: '最初から',
+          onclick: () => runInTab('resumePlay', { ...p, index: 0 }),
+        }),
+        el('button', {
+          class: 'btn small', text: '終了',
+          onclick: async () => {
+            await storage.clearPlayback(tab.id);
+            await renderPlayback();
+          },
+        }),
+      ])
+    );
+    box.hidden = false;
+  }
+
   // ---------- インポート ----------
   async function importFile(file) {
     clearMessage();
@@ -287,4 +328,5 @@
 
   renderList();
   renderDraft();
+  renderPlayback();
 })();
