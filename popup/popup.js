@@ -59,18 +59,22 @@
     return tab;
   }
 
-  // content script を（未注入のときだけ）現在のタブに注入する
+  // content script を現在のタブに注入する。
+  // 拡張機能の更新後もタブには古いコードが残るため、注入済みかどうかでは判定せず毎回注入し直す。
+  // （先に動作中のモードを止めて、古い画面が残らないようにする）
   async function ensureInjected(tabId) {
-    const [probe] = await chrome.scripting.executeScript({
+    await chrome.scripting.executeScript({
       target: { tabId },
-      func: () => Boolean(window.__michishirube),
+      func: () => {
+        if (window.__michishirube && typeof window.__michishirube.stop === 'function') {
+          window.__michishirube.stop();
+        }
+      },
     });
-    if (!probe.result) {
-      await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
-    }
+    await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
   }
 
-  // method: 'startCreate' | 'startRecord' | 'play'。arg はそのメソッドに渡す値
+  // method: 'startCreate' | 'startRecord' | 'play' | 'playInteractive'。arg はそのメソッドに渡す値
   async function runInTab(method, arg) {
     try {
       const tab = await getActiveTab();
@@ -111,7 +115,8 @@
           el('div', { class: 'name', text: t.name }),
           el('div', { class: 'meta', text: `${t.steps.length}手順 ・ 更新 ${formatDate(t.updatedAt)}` }),
           el('div', { class: 'actions' }, [
-            el('button', { class: 'btn small primary', text: '再生', onclick: () => runInTab('play', t) }),
+            el('button', { class: 'btn small primary', text: '見て再生', title: '案内を読みながら進めます（ページは操作できません）', onclick: () => runInTab('play', t) }),
+            el('button', { class: 'btn small primary', text: '操作して再生', title: 'ページを実際に操作して進めます', onclick: () => runInTab('playInteractive', t) }),
             el('button', { class: 'btn small', text: '編集', onclick: () => runInTab('startCreate', t) }),
             el('button', { class: 'btn small', text: '書き出し', onclick: () => exportTour(t) }),
             el('button', { class: 'btn small', text: 'コピー', onclick: () => copyTour(t) }),

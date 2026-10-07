@@ -94,6 +94,7 @@
       margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; font-size: 13px;
       background: #fef3c7; color: #92400e; word-break: break-all;
     }
+    .notice.info { background: #eff6ff; color: #1e40af; }
     .notice.err { background: #fee2e2; color: #991b1b; }
     .notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; user-select: text; }
   `;

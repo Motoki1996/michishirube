@@ -30,9 +30,15 @@
         onEdit: (tour) => startCreate(tour), // 記録後に「コメントを編集」する場合は作成モードで開く
       });
     },
+    // 見て再生（ページ操作は止めて、案内を読み進める）
     play(tour) {
       stop();
-      current = M.player.start(tour, { onExit: () => { current = null; } });
+      current = M.player.start(tour, { interactive: false, onExit: () => { current = null; } });
+    },
+    // 操作して再生（ページを実際に操作して進める）
+    playInteractive(tour) {
+      stop();
+      current = M.player.start(tour, { interactive: true, onExit: () => { current = null; } });
     },
     stop,
   };
