@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>michishirube 動作確認ページ（2ページ目）</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 0 auto; padding: 24px; }
+    nav a { margin-right: 12px; }
+    table { border-collapse: collapse; margin: 16px 0; }
+    th, td { border: 1px solid #ccc; padding: 4px 10px; }
+  </style>
+</head>
+<body>
+  <!-- demo.html からリンクで移動してくるページ。ページをまたぐツアーの確認用 -->
+  <h1>社員一覧（デモ）</h1>
+
+  <nav>
+    <a href="demo.html" data-testid="nav-register">社員登録へ戻る</a>
+  </nav>
+
+  <label>絞り込み
+    <input type="search" name="filter" placeholder="氏名で絞り込み">
+  </label>
+
+  <table>
+    <thead><tr><th>氏名</th><th>部署</th></tr></thead>
+    <tbody>
+      <tr><td>山田 太郎</td><td>営業部</td></tr>
+      <tr><td>佐藤 花子</td><td>開発部</td></tr>
+    </tbody>
+  </table>
+
+  <button type="button" data-testid="export-button" onclick="alert('CSVを出力しました（デモ）')">CSV出力</button>
+</body>
+</html>

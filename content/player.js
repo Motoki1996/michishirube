@@ -55,6 +55,8 @@
     let done = false; // 操作して再生: 全手順を終えた
     let advancing = false; // 次の手順へ進む待機中（二重進行を防ぐ）
     let searching = false; // show() で要素を探している最中
+    let paused = false; // 一時停止中（オーバーレイを隠し、ページ操作に反応しない）
+    let pauseSide = 'right'; // 一時停止バーの位置
     let token = 0; // 古い show() の結果を捨てるための番号
 
     // ---------- 再生位置の保存（ページが切り替わったら、ポップアップから続きを再生できる） ----------
@@ -65,11 +67,14 @@
       send({ type: 'michishirube:playback-clear' });
     }
 
-    // ページ操作を止める透明な板（見て再生のみ）、全面の暗幕（要素が無いとき用）、スポットライト、吹き出し
+    // ページ操作を止める透明な板（見て再生のみ）、全面の暗幕（要素が無いとき用）、スポットライト、吹き出し。
+    // 一時停止中は stage ごと隠し、代わりに小さな一時停止バーを出す
     const dim = h('div', { class: 'dim' });
     const spot = h('div', { class: 'spot' });
     const tipHost = h('div');
-    root.append(...(interactive ? [] : [h('div', { class: 'blocker' })]), dim, spot, tipHost);
+    const stage = h('div', {}, [...(interactive ? [] : [h('div', { class: 'blocker' })]), dim, spot, tipHost]);
+    const pauseHost = h('div');
+    root.append(stage, pauseHost);
 
     // ---------- 位置合わせ ----------
     function placeSpot() {
@@ -168,7 +173,12 @@
         const urlCode = h('code', { text: step.url });
         const children = ['この手順は別のページ用です。移動先: ', urlCode];
         if (/^(https?|file):/.test(step.url)) {
-          children.push(' ', h('a', { href: step.url, target: '_blank', rel: 'noopener noreferrer', text: '開く' }));
+          // 同じタブで移動する。再生位置は保存済みなので、移動先で続きを再生する（service worker が自動で始める）
+          children.push(' ', h('button', {
+            class: 'btn small', text: 'このページへ移動',
+            title: '移動先で続きを再生します。自動で始まらない場合は、ポップアップの「続きを再生」を押してください',
+            onclick: () => location.assign(step.url),
+          }));
         }
         notices.push(h('p', { class: 'notice' }, children));
       }
@@ -191,7 +201,13 @@
       const bar = h('span');
       bar.style.width = `${Math.round(((i + 1) / tour.steps.length) * 100)}%`;
       const tip = h('div', { class: 'tip' }, [
-        h('div', { class: 'bar' }, [bar]),
+        h('div', { class: 'top' }, [
+          h('div', { class: 'bar' }, [bar]),
+          h('button', {
+            class: 'btn small', text: '一時停止', onclick: pause,
+            title: 'オーバーレイを隠して、ページを自由に操作できるようにします',
+          }),
+        ]),
         ...notices,
         h('h3', { text: step.title }),
         step.body ? h('p', { class: 'body', text: step.body }) : null,
@@ -211,7 +227,7 @@
     // 表示中の要素を見張る。
     // SPAの再描画で要素が作り直された（ページから外れた）ときや、最初に見つからなかった要素が後から現れたときは探し直す
     function watch() {
-      if (done || searching || advancing) return; // 操作直後は要素が消えても次の手順へ進むので見ない
+      if (done || paused || searching || advancing) return; // 操作直後は要素が消えても次の手順へ進むので見ない
       if (targetEl && targetEl.isConnected) {
         reposition(); // アニメーションなどで要素が動いた場合に追従する
         return;
@@ -269,6 +285,45 @@
       if (opts && opts.onExit) opts.onExit();
     }
 
+    // ---------- 一時停止 ----------
+    function pause() {
+      if (paused || done) return;
+      paused = true;
+      token++; // 要素の待ち受けや、操作後の「次へ」を取り消す
+      searching = false;
+      if (advancing) {
+        // 操作して次へ進む直前だった: 操作は済んでいるので、再開時は次の手順から
+        advancing = false;
+        if (index < tour.steps.length - 1) index++;
+      }
+      stage.style.display = 'none';
+      renderPauseBar();
+    }
+
+    function resume() {
+      if (!paused) return;
+      paused = false;
+      pauseHost.textContent = '';
+      stage.style.display = '';
+      show(index); // 一時停止中にページが変わっているかもしれないので、要素を探し直す
+    }
+
+    function renderPauseBar() {
+      pauseHost.textContent = '';
+      pauseHost.append(
+        h('div', { class: `paused ${pauseSide}` }, [
+          M.logo(),
+          h('span', { class: 'paused-text', text: `一時停止中（${index + 1} / ${tour.steps.length}）` }),
+          h('button', { class: 'btn small primary', text: '再開', onclick: resume }),
+          h('button', { class: 'btn small', text: '終了', onclick: exit }),
+          h('button', {
+            class: 'btn small', text: pauseSide === 'right' ? '←' : '→', title: '位置を切り替え',
+            onclick: () => { pauseSide = pauseSide === 'right' ? 'left' : 'right'; renderPauseBar(); },
+          }),
+        ])
+      );
+    }
+
     // ---------- 操作して再生: 対象要素の操作を検知して次へ ----------
     // 少し待ってから次へ進む（クリックによるメニュー展開などを待つ）
     function advanceSoon() {
@@ -292,16 +347,17 @@
     }
 
     function onActionClick(e) {
-      if (!e.isTrusted || !targetEl || completesOnChange(targetEl)) return;
+      if (paused || !e.isTrusted || !targetEl || completesOnChange(targetEl)) return;
       if (hitsTarget(e)) advanceSoon();
     }
     function onActionChange(e) {
-      if (!targetEl || !completesOnChange(targetEl)) return;
+      if (paused || !targetEl || !completesOnChange(targetEl)) return;
       if (hitsTarget(e)) advanceSoon();
     }
 
     // ---------- イベント ----------
     function onKey(e) {
+      if (paused) return; // 一時停止中はページ側のキー操作を邪魔しない
       if (e.key === 'Escape') exit();
       // 矢印キーは、操作して再生ではページ側の入力と干渉するので使わない
       else if (!interactive && e.key === 'ArrowRight') next();

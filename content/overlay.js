@@ -108,7 +108,8 @@
       padding: 14px 18px 14px; pointer-events: auto; animation: rise .22s ease-out;
       box-shadow: 0 0 0 1px var(--line), 0 24px 56px -12px rgba(0, 0, 0, .55);
     }
-    .tip .bar { height: 4px; border-radius: 999px; background: var(--soft); overflow: hidden; margin-bottom: 12px; }
+    .tip .top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .tip .bar { flex: 1; height: 4px; border-radius: 999px; background: var(--soft); overflow: hidden; }
     .tip .bar span { display: block; height: 100%; border-radius: 999px; background: var(--grad); transition: width .3s ease; }
     .tip h3 { margin: 0 0 6px; font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
     .tip .body { margin: 0; white-space: pre-wrap; word-break: break-word; color: #3a3752; }
@@ -127,6 +128,17 @@
     .notice a { color: inherit; }
     .notice code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; user-select: text; }
 
+    /* 一時停止バー */
+    .paused {
+      position: fixed; right: 18px; bottom: 18px; display: flex; align-items: center; gap: 6px;
+      padding: 8px 10px 8px 12px; border-radius: 999px; background: #fff; pointer-events: auto;
+      box-shadow: 0 0 0 1px var(--line), 0 16px 36px -10px rgba(23, 20, 43, .45);
+      animation: rise .22s ease-out;
+    }
+    .paused.left { right: auto; left: 18px; }
+    .paused .logo { width: 20px; height: 20px; margin-right: 2px; }
+    .paused-text { font-size: 13px; font-weight: 700; color: var(--brand-ink); margin-right: 4px; white-space: nowrap; }
+
     @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
     @keyframes ring {
       0%, 100% { box-shadow: 0 0 0 3px rgba(255, 255, 255, .95), 0 0 0 7px rgba(168, 85, 247, .55), 0 0 0 200vmax rgba(18, 14, 36, .64); }
@@ -137,7 +149,7 @@
       80%, 100% { box-shadow: 0 0 0 8px rgba(229, 72, 77, 0); }
     }
     @media (prefers-reduced-motion: reduce) {
-      .panel, .tip, .dialog, .spot, .dot { animation: none; }
+      .panel, .tip, .dialog, .spot, .dot, .paused { animation: none; }
     }
   `;
 

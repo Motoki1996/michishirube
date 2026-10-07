@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "社内Webシステムの画面上で操作ツアーを作成・再生できる拡張機能",
   "permissions": ["storage", "activeTab", "scripting"],
+  "optional_host_permissions": ["http://*/*", "https://*/*", "file:///*"],
   "action": {
     "default_title": "michishirube",
     "default_popup": "popup/popup.html",

@@ -1,6 +1,7 @@
 // service worker: content script からのツアー保存要求を受け付ける。
+// また、再生中のタブでページが切り替わったら、遷移先のページで続きを自動で再生する。
 // 保存先（chrome.storage.local）への書き込みをここに集約し、保存前に必ずスキーマ検証する。
-importScripts('../lib/schema.js', '../lib/storage.js');
+importScripts('../lib/schema.js', '../lib/storage.js', '../lib/inject.js');
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 自分自身の拡張機能からのメッセージだけ処理する
@@ -85,4 +86,39 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // タブを閉じたら、そのタブの再生位置を消す
 chrome.tabs.onRemoved.addListener((tabId) => {
   globalThis.Michishirube.storage.clearPlayback(tabId).catch(() => {});
+});
+
+// ---------- ページをまたぐ再生: 遷移先のページで続きを自動で再生する ----------
+// サイトへのアクセス許可（ポップアップで再生を始めるときに求める）がある場合だけ動く。
+// 許可がなければ tab.url が読めず（tabs 権限は持たない）注入もできないので、従来どおりポップアップの「続きを再生」で続ける
+const resuming = new Set(); // 注入中のタブ（読み込み完了の通知が続けて来ても二重に始めない）
+
+async function autoResume(tabId, url) {
+  const { storage, inject } = globalThis.Michishirube;
+  const playback = await storage.getPlayback(tabId);
+  if (!playback) return;
+  // ツアーで使うサイトのページでだけ再開する（SSOなどで別サイトを経由している間は待つ）
+  if (!inject.tourOrigins(playback.tour).includes(inject.originOf(url))) return;
+
+  // SPAのURL変更や、戻る/進むでキャッシュから復元されたページでは、再生がまだ動いている
+  const [probe] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => Boolean(window.__michishirube && window.__michishirube.isPlaying && window.__michishirube.isPlaying()),
+  });
+  if (probe && probe.result) return;
+
+  await inject.inject(tabId);
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (p) => window.__michishirube.resumePlay(p),
+    args: [playback],
+  });
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete' || !tab.url || resuming.has(tabId)) return;
+  resuming.add(tabId);
+  autoResume(tabId, tab.url)
+    .catch(() => {}) // 注入できないページ（chrome:// など）。ポップアップから続けられる
+    .finally(() => resuming.delete(tabId));
 });

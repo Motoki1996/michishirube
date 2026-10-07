@@ -2,18 +2,8 @@
 (function () {
   'use strict';
 
-  const { schema, storage } = globalThis.Michishirube;
+  const { schema, storage, inject } = globalThis.Michishirube;
 
-  // 操作中のタブに注入する content script（この順で読み込む）
-  const CONTENT_FILES = [
-    'lib/schema.js',
-    'lib/locator.js',
-    'content/overlay.js',
-    'content/creator.js',
-    'content/player.js',
-    'content/recorder.js',
-    'content/main.js',
-  ];
   const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
   const $ = (id) => document.getElementById(id);
@@ -59,26 +49,11 @@
     return tab;
   }
 
-  // content script を現在のタブに注入する。
-  // 拡張機能の更新後もタブには古いコードが残るため、注入済みかどうかでは判定せず毎回注入し直す。
-  // （先に動作中のモードを止めて、古い画面が残らないようにする）
-  async function ensureInjected(tabId) {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      func: () => {
-        if (window.__michishirube && typeof window.__michishirube.stop === 'function') {
-          window.__michishirube.stop();
-        }
-      },
-    });
-    await chrome.scripting.executeScript({ target: { tabId }, files: CONTENT_FILES });
-  }
-
   // method: 'startCreate' | 'startRecord' | 'play' | 'playInteractive' | 'resumePlay'。arg はそのメソッドに渡す値
   async function runInTab(method, arg) {
     try {
       const tab = await getActiveTab();
-      await ensureInjected(tab.id);
+      await inject.inject(tab.id);
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: (m, t) => window.__michishirube[m](t),
@@ -96,6 +71,21 @@
         ]
       );
     }
+  }
+
+  // ページをまたぐツアーは、遷移先でも自動で続きを再生できるよう、使うサイトへのアクセス許可をもらう。
+  // 断られても再生はできる（その場合、遷移後はポップアップの「続きを再生」で続ける）。
+  // 許可ダイアログはクリック操作の中でしか出せないので、await より前に呼ぶ
+  async function playTour(method, arg) {
+    const tour = method === 'resumePlay' ? arg.tour : arg;
+    if (inject.spansPages(tour)) {
+      try {
+        await chrome.permissions.request({ origins: inject.originPatterns(tour) });
+      } catch (_) {
+        // file: のURLなど、求められない権限が含まれる場合は自動再生をあきらめる
+      }
+    }
+    await runInTab(method, arg);
   }
 
   // ---------- 一覧 ----------
@@ -118,8 +108,8 @@
           ]),
           el('div', { class: 'meta', text: `更新 ${formatDate(t.updatedAt)}` }),
           el('div', { class: 'play' }, [
-            el('button', { class: 'pbtn grad', text: '操作して再生', title: 'ページを実際に操作して進めます', onclick: () => runInTab('playInteractive', t) }),
-            el('button', { class: 'pbtn soft', text: '見て再生', title: '案内を読みながら進めます（ページは操作できません）', onclick: () => runInTab('play', t) }),
+            el('button', { class: 'pbtn grad', text: '操作して再生', title: 'ページを実際に操作して進めます', onclick: () => playTour('playInteractive', t) }),
+            el('button', { class: 'pbtn soft', text: '見て再生', title: '案内を読みながら進めます（ページは操作できません）', onclick: () => playTour('play', t) }),
           ]),
           el('div', { class: 'more' }, [
             el('button', { class: 'link', text: '編集', onclick: () => runInTab('startCreate', t) }),
@@ -227,11 +217,11 @@
       el('div', { class: 'row' }, [
         el('button', {
           class: 'btn small primary', text: '続きを再生',
-          onclick: () => runInTab('resumePlay', p),
+          onclick: () => playTour('resumePlay', p),
         }),
         el('button', {
           class: 'btn small', text: '最初から',
-          onclick: () => runInTab('resumePlay', { ...p, index: 0 }),
+          onclick: () => playTour('resumePlay', { ...p, index: 0 }),
         }),
         el('button', {
           class: 'btn small', text: '終了',

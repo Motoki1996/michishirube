@@ -5,12 +5,20 @@
 
   const M = globalThis.Michishirube;
   let current = null;
+  let playing = false; // current が再生モードか
 
   function stop() {
     if (current) {
       current.destroy();
       current = null;
     }
+    playing = false;
+  }
+
+  function startPlay(tour, opts) {
+    stop();
+    playing = true;
+    current = M.player.start(tour, { ...opts, onExit: () => { current = null; playing = false; } });
   }
 
   function startCreate(tour) {
@@ -32,23 +40,18 @@
     },
     // 見て再生（ページ操作は止めて、案内を読み進める）
     play(tour) {
-      stop();
-      current = M.player.start(tour, { interactive: false, onExit: () => { current = null; } });
+      startPlay(tour, { interactive: false });
     },
     // 操作して再生（ページを実際に操作して進める）
     playInteractive(tour) {
-      stop();
-      current = M.player.start(tour, { interactive: true, onExit: () => { current = null; } });
+      startPlay(tour, { interactive: true });
     },
     // ページ遷移などで中断された再生を、保存された手順から続ける。playback: { tour, index, interactive }
     resumePlay(playback) {
-      stop();
-      current = M.player.start(playback.tour, {
-        interactive: Boolean(playback.interactive),
-        startIndex: playback.index,
-        onExit: () => { current = null; },
-      });
+      startPlay(playback.tour, { interactive: Boolean(playback.interactive), startIndex: playback.index });
     },
+    // 再生中か（戻る/進むでページがキャッシュから復元された場合などに、二重に再生を始めないため）
+    isPlaying: () => playing,
     stop,
   };
 })();
