@@ -61,6 +61,11 @@
     .status.error { color: #b91c1c; }
     .status.ok { color: #15803d; }
 
+    /* 記録パネル */
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #dc2626; margin-right: 6px; }
+    .last { margin-top: 8px; font-size: 13px; color: #475569; word-break: break-all; }
+    .chk { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 13px; }
+
     /* ダイアログ */
     .dialog-back {
       position: fixed; inset: 0; background: rgba(15, 23, 42, .45); pointer-events: auto;
@@ -163,6 +168,40 @@
     });
   }
 
+  // クリップボードにコピー。http のページでは navigator.clipboard が使えないので execCommand にフォールバック
+  async function copyText(layer, text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (_) { /* フォールバックへ */ }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position: fixed; opacity: 0;';
+    layer.root.append(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (_) { /* 失敗扱い */ }
+    ta.remove();
+    return ok;
+  }
+
+  // ツアーをJSONファイルとしてダウンロード
+  function downloadTour(layer, tour) {
+    const blob = new Blob([JSON.stringify(tour, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: M.schema.exportFileName(tour.name) });
+    layer.root.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  M.copyText = copyText;
+  M.downloadTour = downloadTour;
   M.h = h;
   M.createLayer = createLayer;
   M.ask = ask;

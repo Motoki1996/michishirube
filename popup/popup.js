@@ -11,6 +11,7 @@
     'content/overlay.js',
     'content/creator.js',
     'content/player.js',
+    'content/recorder.js',
     'content/main.js',
   ];
   const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
@@ -69,15 +70,15 @@
     }
   }
 
-  // method: 'startCreate' | 'play'
-  async function runInTab(method, tour) {
+  // method: 'startCreate' | 'startRecord' | 'play'。arg はそのメソッドに渡す値
+  async function runInTab(method, arg) {
     try {
       const tab = await getActiveTab();
       await ensureInjected(tab.id);
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: (m, t) => window.__michishirube[m](t),
-        args: [method, tour],
+        args: [method, arg],
       });
       window.close();
     } catch (e) {
@@ -113,6 +114,7 @@
             el('button', { class: 'btn small primary', text: '再生', onclick: () => runInTab('play', t) }),
             el('button', { class: 'btn small', text: '編集', onclick: () => runInTab('startCreate', t) }),
             el('button', { class: 'btn small', text: '書き出し', onclick: () => exportTour(t) }),
+            el('button', { class: 'btn small', text: 'コピー', onclick: () => copyTour(t) }),
             el('button', { class: 'btn small', text: '削除', onclick: () => deleteTour(t) }),
           ]),
         ])
@@ -129,15 +131,67 @@
 
   // ---------- エクスポート ----------
   function exportTour(t) {
-    const safeName = t.name.replace(/[\\/:*?"<>|\s]+/g, '_');
     const blob = new Blob([JSON.stringify(t, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = el('a', { href: url, download: `michishirube_${safeName}.json` });
+    const a = el('a', { href: url, download: schema.exportFileName(t.name) });
     document.body.append(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     showMessage(`「${t.name}」を書き出しました`, 'ok');
+  }
+
+  // JSONをクリップボードにコピー（チャットやメールに貼り付けて共有できる）
+  async function copyTour(t) {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(t, null, 2));
+      showMessage(`「${t.name}」のJSONをコピーしました。貼り付けて共有できます`, 'ok');
+    } catch (e) {
+      showMessage('コピーできませんでした。「書き出し」を使ってください', 'error');
+    }
+  }
+
+  // ---------- 記録の下書き（ページ遷移などで中断された記録） ----------
+  async function renderDraft() {
+    const box = $('draft');
+    const draft = await storage.getDraft();
+    if (!draft || draft.steps.length === 0) {
+      box.hidden = true;
+      return;
+    }
+    box.textContent = '';
+    box.append(el('div', { text: `中断された記録があります（${draft.steps.length}手順）` }));
+    box.append(
+      el('div', { class: 'row' }, [
+        el('button', {
+          class: 'btn small primary', text: 'このページで続きを記録',
+          onclick: () => runInTab('startRecord', { comment: draft.comment, steps: draft.steps }),
+        }),
+        el('button', {
+          class: 'btn small', text: 'このまま保存',
+          onclick: async () => {
+            const now = new Date().toISOString();
+            let tour = { schemaVersion: 1, name: schema.defaultTourName(), description: '', createdAt: now, updatedAt: now, steps: draft.steps };
+            const res = await storage.save(tour);
+            if (res.conflict) tour = { ...tour, name: res.suggestedName };
+            if (res.conflict) await storage.save(tour);
+            await storage.clearDraft();
+            showMessage(`「${tour.name}」として保存しました`, 'ok');
+            await renderDraft();
+            await renderList();
+          },
+        }),
+        el('button', {
+          class: 'btn small', text: '破棄',
+          onclick: async () => {
+            if (!confirm('中断された記録を破棄しますか？')) return;
+            await storage.clearDraft();
+            await renderDraft();
+          },
+        }),
+      ])
+    );
+    box.hidden = false;
   }
 
   // ---------- インポート ----------
@@ -146,10 +200,18 @@
     if (file.size > MAX_IMPORT_BYTES) {
       return showMessage('インポートできません。', 'error', ['ファイルが大きすぎます（最大5MB）']);
     }
+    await importText(await file.text());
+  }
 
+  // JSON文字列（ファイルの中身、または貼り付けたテキスト）をインポートする
+  async function importText(text) {
+    clearMessage();
+    if (text.length > MAX_IMPORT_BYTES) {
+      return showMessage('インポートできません。', 'error', ['テキストが大きすぎます（最大5MB）']);
+    }
     let data;
     try {
-      data = JSON.parse(await file.text());
+      data = JSON.parse(text);
     } catch (e) {
       return showMessage('インポートできません。', 'error', [`JSONとして読み込めません（${e.message}）`]);
     }
@@ -193,7 +255,19 @@
   }
 
   // ---------- 起動 ----------
-  $('create').addEventListener('click', () => runInTab('startCreate', null));
+  $('record-comment').addEventListener('click', () => runInTab('startRecord', { comment: true }));
+  $('record-quick').addEventListener('click', () => runInTab('startRecord', { comment: false }));
+  $('pick-mode').addEventListener('click', () => runInTab('startCreate', null));
+  $('paste-toggle').addEventListener('click', () => {
+    $('paste-area').hidden = !$('paste-area').hidden;
+    if (!$('paste-area').hidden) $('paste-text').focus();
+  });
+  $('paste-import').addEventListener('click', async () => {
+    const text = $('paste-text').value.trim();
+    if (!text) return showMessage('JSONを貼り付けてください', 'error');
+    await importText(text);
+    $('paste-text').value = '';
+  });
   $('import').addEventListener('click', () => $('file').click());
   $('file').addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -202,4 +276,5 @@
   });
 
   renderList();
+  renderDraft();
 })();

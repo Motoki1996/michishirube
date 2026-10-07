@@ -21,5 +21,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })().catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
     return true; // 非同期で応答する
   }
+
+  // 記録中の下書きを保存する（手順だけをスキーマ検証して保存）
+  if (msg.type === 'michishirube:draft-save') {
+    (async () => {
+      const probe = globalThis.Michishirube.schema.validateTour({
+        schemaVersion: 1, name: 'draft', steps: msg.steps,
+      });
+      if (!probe.ok) {
+        sendResponse({ ok: false, error: probe.errors.join('\n') });
+        return;
+      }
+      await globalThis.Michishirube.storage.setDraft({
+        steps: probe.tour.steps,
+        comment: msg.comment === true,
+        updatedAt: new Date().toISOString(),
+      });
+      sendResponse({ ok: true });
+    })().catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+    return true;
+  }
+
+  if (msg.type === 'michishirube:draft-clear') {
+    globalThis.Michishirube.storage.clearDraft()
+      .then(() => sendResponse({ ok: true }))
+      .catch((e) => sendResponse({ ok: false, error: String((e && e.message) || e) }));
+    return true;
+  }
   return false;
 });

@@ -6,11 +6,15 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <header>
-    <h1>みちしるべ</h1>
-    <button id="create" class="btn primary">ツアーを作成</button>
-  </header>
+  <h1>みちしるべ</h1>
 
+  <div class="record-buttons">
+    <button id="record-comment" class="btn primary">コメントしながら記録</button>
+    <button id="record-quick" class="btn primary">すばやく記録</button>
+  </div>
+  <p class="record-help">いつも通りページを操作するだけで手順が記録されます。</p>
+
+  <div id="draft" class="message info" hidden></div>
   <div id="message" class="message" hidden></div>
 
   <section>
@@ -19,9 +23,18 @@
     <p id="empty" class="empty" hidden>ツアーはまだありません。</p>
   </section>
 
-  <section>
-    <button id="import" class="btn">JSONをインポート</button>
+  <section class="import">
+    <button id="import" class="btn">JSONファイルをインポート</button>
+    <button id="paste-toggle" class="btn">貼り付けてインポート</button>
     <input id="file" type="file" accept=".json,application/json" hidden>
+    <div id="paste-area" hidden>
+      <textarea id="paste-text" placeholder="コピーしたJSONをここに貼り付け"></textarea>
+      <button id="paste-import" class="btn small primary">インポート</button>
+    </div>
+  </section>
+
+  <section>
+    <button id="pick-mode" class="btn small">要素を選んで手順を作る（クリックを止めて選択）</button>
   </section>
 
   <script src="../lib/schema.js"></script>
