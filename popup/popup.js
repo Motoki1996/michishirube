@@ -112,15 +112,20 @@
     for (const t of tours) {
       list.append(
         el('li', { class: 'tour' }, [
-          el('div', { class: 'name', text: t.name }),
-          el('div', { class: 'meta', text: `${t.steps.length}手順 ・ 更新 ${formatDate(t.updatedAt)}` }),
-          el('div', { class: 'actions' }, [
-            el('button', { class: 'btn small primary', text: '見て再生', title: '案内を読みながら進めます（ページは操作できません）', onclick: () => runInTab('play', t) }),
-            el('button', { class: 'btn small primary', text: '操作して再生', title: 'ページを実際に操作して進めます', onclick: () => runInTab('playInteractive', t) }),
-            el('button', { class: 'btn small', text: '編集', onclick: () => runInTab('startCreate', t) }),
-            el('button', { class: 'btn small', text: '書き出し', onclick: () => exportTour(t) }),
-            el('button', { class: 'btn small', text: 'コピー', onclick: () => copyTour(t) }),
-            el('button', { class: 'btn small', text: '削除', onclick: () => deleteTour(t) }),
+          el('div', { class: 'tour-head' }, [
+            el('div', { class: 'name', text: t.name }),
+            el('span', { class: 'pill', text: `${t.steps.length}手順` }),
+          ]),
+          el('div', { class: 'meta', text: `更新 ${formatDate(t.updatedAt)}` }),
+          el('div', { class: 'play' }, [
+            el('button', { class: 'pbtn grad', text: '操作して再生', title: 'ページを実際に操作して進めます', onclick: () => runInTab('playInteractive', t) }),
+            el('button', { class: 'pbtn soft', text: '見て再生', title: '案内を読みながら進めます（ページは操作できません）', onclick: () => runInTab('play', t) }),
+          ]),
+          el('div', { class: 'more' }, [
+            el('button', { class: 'link', text: '編集', onclick: () => runInTab('startCreate', t) }),
+            el('button', { class: 'link', text: '書き出し', onclick: () => exportTour(t) }),
+            el('button', { class: 'link', text: 'コピー', onclick: () => copyTour(t) }),
+            el('button', { class: 'link danger', text: '削除', onclick: () => deleteTour(t) }),
           ]),
         ])
       );

@@ -188,7 +188,7 @@
       const last = state.steps[state.steps.length - 1];
       const kids = [
         h('div', { class: 'panel-head' }, [
-          h('strong', {}, [h('span', { class: 'dot' }), `記録中（${state.steps.length}手順）`]),
+          h('strong', {}, [M.logo(), h('span', { class: 'dot' }), `記録中（${state.steps.length}手順）`]),
           sideButton(),
         ]),
         h('div', { class: 'hint', text: 'いつも通りページを操作してください。クリックや入力が自動で記録されます。' }),
@@ -229,7 +229,7 @@
 
     function renderFinish() {
       return panel([
-        h('div', { class: 'panel-head' }, [h('strong', { text: `記録を保存（${state.steps.length}手順）` }), sideButton()]),
+        h('div', { class: 'panel-head' }, [h('strong', {}, [M.logo(), `記録を保存（${state.steps.length}手順）`]), sideButton()]),
         h('label', { class: 'lbl', text: 'ツアー名' }),
         h('input', {
           class: 'in', value: state.name, maxlength: 100,
@@ -248,7 +248,7 @@
       const tour = state.savedTour;
       const status = h('div', { class: 'status ok', text: state.message });
       return panel([
-        h('div', { class: 'panel-head' }, [h('strong', { text: '保存しました' })]),
+        h('div', { class: 'panel-head' }, [h('strong', {}, [M.logo(), '保存しました'])]),
         h('div', { class: 'last', text: `「${tour.name}」（${tour.steps.length}手順）` }),
         h('div', { class: 'hint', text: '共有するには、JSONファイルを書き出すか、コピーして貼り付けてください。受け取る側はポップアップの「インポート」で取り込めます。' }),
         status,

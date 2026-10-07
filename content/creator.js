@@ -274,7 +274,7 @@
       panelHost.append(
         h('div', { class: `panel ${state.side}` }, [
           h('div', { class: 'panel-head' }, [
-            h('strong', { text: 'みちしるべ：作成モード' }),
+            h('strong', {}, [M.logo(), '作成モード']),
             h('button', {
               class: 'btn small', text: state.side === 'right' ? '← 左へ' : '右へ →', title: 'パネルの位置を切り替え',
               onclick: () => { state.side = state.side === 'right' ? 'left' : 'right'; render(); },

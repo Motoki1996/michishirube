@@ -136,7 +136,7 @@
         const urlCode = h('code', { text: step.url });
         const children = ['この手順は別のページ用です。移動先: ', urlCode];
         if (/^(https?|file):/.test(step.url)) {
-          children.push(' ', h('a', { href: step.url, target: '_blank', rel: 'noopener noreferrer', text: '開く', style: 'color:inherit' }));
+          children.push(' ', h('a', { href: step.url, target: '_blank', rel: 'noopener noreferrer', text: '開く' }));
         }
         notices.push(h('p', { class: 'notice' }, children));
       }
@@ -150,7 +150,10 @@
       }
 
       const last = i === tour.steps.length - 1;
+      const bar = h('span');
+      bar.style.width = `${Math.round(((i + 1) / tour.steps.length) * 100)}%`;
       const tip = h('div', { class: 'tip' }, [
+        h('div', { class: 'bar' }, [bar]),
         ...notices,
         h('h3', { text: step.title }),
         step.body ? h('p', { class: 'body', text: step.body }) : null,
