@@ -33,9 +33,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: false, error: probe.errors.join('\n') });
         return;
       }
+      // どのタブ・サイトで記録しているかも残す（ページが切り替わったら、そのタブで自動で続きを記録する）
       await globalThis.Michishirube.storage.setDraft({
         steps: probe.tour.steps,
         comment: msg.comment === true,
+        tabId: sender.tab ? sender.tab.id : null,
+        origin: globalThis.Michishirube.inject.originOf(sender.url),
         updatedAt: new Date().toISOString(),
       });
       sendResponse({ ok: true });
@@ -88,7 +91,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   globalThis.Michishirube.storage.clearPlayback(tabId).catch(() => {});
 });
 
-// ---------- ページをまたぐ再生: 遷移先のページで続きを自動で再生する ----------
+// ---------- ページをまたぐ再生・記録: 遷移先のページで続きを自動で再生・記録する ----------
 // サイトへのアクセス許可（ポップアップで再生を始めるときに求める）がある場合だけ動く。
 // 許可がなければ tab.url が読めず（tabs 権限は持たない）注入もできないので、従来どおりポップアップの「続きを再生」で続ける
 const resuming = new Set(); // 注入中のタブ（読み込み完了の通知が続けて来ても二重に始めない）
@@ -96,7 +99,7 @@ const resuming = new Set(); // 注入中のタブ（読み込み完了の通知�
 async function autoResume(tabId, url) {
   const { storage, inject } = globalThis.Michishirube;
   const playback = await storage.getPlayback(tabId);
-  if (!playback) return;
+  if (!playback) return autoResumeRecord(tabId, url);
   // ツアーで使うサイトのページでだけ再開する（SSOなどで別サイトを経由している間は待つ）
   if (!inject.tourOrigins(playback.tour).includes(inject.originOf(url))) return;
 
@@ -112,6 +115,27 @@ async function autoResume(tabId, url) {
     target: { tabId },
     func: (p) => window.__michishirube.resumePlay(p),
     args: [playback],
+  });
+}
+
+// 記録中のタブでページが切り替わったら、移動先のページで下書きの続きから記録を再開する。
+// 記録を始めたサイトのページでだけ再開する（SSOなどで別サイトを経由している間は待つ）
+async function autoResumeRecord(tabId, url) {
+  const { storage, inject } = globalThis.Michishirube;
+  const draft = await storage.getDraft();
+  if (!draft || draft.tabId !== tabId || !draft.origin || inject.originOf(url) !== draft.origin) return;
+
+  const [probe] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => Boolean(window.__michishirube && window.__michishirube.isRecording && window.__michishirube.isRecording()),
+  });
+  if (probe && probe.result) return;
+
+  await inject.inject(tabId);
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    func: (o) => window.__michishirube.startRecord(o),
+    args: [{ comment: draft.comment === true, steps: draft.steps }],
   });
 }
 

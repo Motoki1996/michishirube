@@ -50,6 +50,10 @@
       clearTimeout(draftTimer);
       draftTimer = setTimeout(persistDraft, 500);
     }
+    // ページが切り替わる直前に、入力中のタイトル・コメントを下書きへ反映する
+    function onPageHide() {
+      if (state.phase === 'recording' && state.steps.length > 0) persistDraft();
+    }
 
     // ---------- 記録 ----------
     // 記録した要素を一瞬だけ枠で光らせて、記録されたことを伝える
@@ -281,14 +285,18 @@
     // ---------- イベント登録（ページの動作は止めない） ----------
     window.addEventListener('click', onClick, true);
     window.addEventListener('change', onChange, true);
+    window.addEventListener('pagehide', onPageHide);
 
     function destroy() {
       window.removeEventListener('click', onClick, true);
       window.removeEventListener('change', onChange, true);
+      window.removeEventListener('pagehide', onPageHide);
       clearTimeout(draftTimer);
       layer.destroy();
     }
 
+    // 新しく記録を始めるときは、以前の下書きを消す（残っていると、移動先で古い下書きの続きになってしまう）
+    if (!opts.steps) send({ type: 'michishirube:draft-clear' });
     render();
     return { destroy };
   }

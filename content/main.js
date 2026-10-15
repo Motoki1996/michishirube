@@ -6,6 +6,7 @@
   const M = globalThis.Michishirube;
   let current = null;
   let playing = false; // current が再生モードか
+  let recording = false; // current が記録モードか
 
   function stop() {
     if (current) {
@@ -13,6 +14,7 @@
       current = null;
     }
     playing = false;
+    recording = false;
   }
 
   function startPlay(tour, opts) {
@@ -31,10 +33,11 @@
     // 操作を記録する。opts: { comment: boolean, steps?: 再開時の既存手順 }
     startRecord(opts) {
       stop();
+      recording = true;
       current = M.recorder.start({
         comment: Boolean(opts && opts.comment),
         steps: opts && opts.steps,
-        onExit: () => { current = null; },
+        onExit: () => { current = null; recording = false; },
         onEdit: (tour) => startCreate(tour), // 記録後に「コメントを編集」する場合は作成モードで開く
       });
     },
@@ -52,6 +55,8 @@
     },
     // 再生中か（戻る/進むでページがキャッシュから復元された場合などに、二重に再生を始めないため）
     isPlaying: () => playing,
+    // 記録中か（同じく、二重に記録を始めないため）
+    isRecording: () => recording,
     stop,
   };
 })();

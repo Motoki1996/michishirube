@@ -49,6 +49,11 @@
     return tab;
   }
 
+  let activeTabUrl = null;
+  chrome.tabs.query({ active: true, currentWindow: true })
+    .then(([tab]) => { activeTabUrl = (tab && tab.url) || null; })
+    .catch(() => {});
+
   // method: 'startCreate' | 'startRecord' | 'play' | 'playInteractive' | 'resumePlay'。arg はそのメソッドに渡す値
   async function runInTab(method, arg) {
     try {
@@ -86,6 +91,20 @@
       }
     }
     await runInTab(method, arg);
+  }
+
+  // 記録も、ページが切り替わった先で自動で続けられるよう、記録を始めるサイトへのアクセス許可をもらう。
+  // 断られても記録はできる（その場合、ページが切り替わったらポップアップの「続きを記録」で続ける）。
+  // 許可ダイアログはクリック操作の中でしか出せないので、await より前に呼ぶ（タブのURLは起動時に取得済み）
+  async function recordTour(arg) {
+    if (activeTabUrl) {
+      try {
+        await chrome.permissions.request({ origins: inject.originPatterns({ steps: [{ url: activeTabUrl }] }) });
+      } catch (_) {
+        // file: のURLなど、求められない権限の場合は自動再開をあきらめる
+      }
+    }
+    await runInTab('startRecord', arg);
   }
 
   // ---------- 一覧 ----------
@@ -165,7 +184,7 @@
       el('div', { class: 'row' }, [
         el('button', {
           class: 'btn small primary', text: 'このページで続きを記録',
-          onclick: () => runInTab('startRecord', { comment: draft.comment, steps: draft.steps }),
+          onclick: () => recordTour({ comment: draft.comment, steps: draft.steps }),
         }),
         el('button', {
           class: 'btn small', text: 'このまま保存',
@@ -296,8 +315,8 @@
   }
 
   // ---------- 起動 ----------
-  $('record-comment').addEventListener('click', () => runInTab('startRecord', { comment: true }));
-  $('record-quick').addEventListener('click', () => runInTab('startRecord', { comment: false }));
+  $('record-comment').addEventListener('click', () => recordTour({ comment: true }));
+  $('record-quick').addEventListener('click', () => recordTour({ comment: false }));
   $('pick-mode').addEventListener('click', () => runInTab('startCreate', null));
   $('paste-toggle').addEventListener('click', () => {
     $('paste-area').hidden = !$('paste-area').hidden;

@@ -14,6 +14,10 @@
   const ADVANCE_DELAY_MS = 350;
   // 表示中の要素を見張る間隔（SPAで要素が作り直された・動いた場合に追従する）
   const WATCH_INTERVAL_MS = 500;
+  // 「押して移動」: 押してからページが切り替わり始める（またはURLが変わる）のを待つ時間
+  const NAV_TIMEOUT_MS = 3000;
+  // 切り替わり始めたあと、移動先のページが表示されるのを待つ時間（過ぎたら、もう一度押せるようにする）
+  const NAV_LEAVE_TIMEOUT_MS = 15000;
 
   // 値の変更（change）で完了とみなす要素か。それ以外はクリックで完了とする
   const NO_CHANGE_INPUT = ['checkbox', 'radio', 'button', 'submit', 'reset', 'image'];
@@ -34,6 +38,12 @@
   }
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // 押すとページ内容が変わりうる要素か（リンクは移動するだけなので、押す前の確認をしない）
+  function linkOf(el) {
+    const a = el.closest('a[href]');
+    return a && !/^javascript:/i.test(a.getAttribute('href')) ? a : null;
+  }
 
   async function send(msg) {
     try {
@@ -57,6 +67,8 @@
     let searching = false; // show() で要素を探している最中
     let paused = false; // 一時停止中（オーバーレイを隠し、ページ操作に反応しない）
     let pauseSide = 'right'; // 一時停止バーの位置
+    let moving = false; // 「押して移動」で、ページが切り替わるのを待っている
+    let moveFailed = false; // 「押して移動」で押したが、ページが切り替わらなかった
     let token = 0; // 古い show() の結果を捨てるための番号
 
     // ---------- 再生位置の保存（ページが切り替わったら、ポップアップから続きを再生できる） ----------
@@ -151,6 +163,8 @@
     async function show(i) {
       index = i;
       advancing = false;
+      moving = false;
+      moveFailed = false;
       savePosition(i);
       const my = ++token;
       const step = tour.steps[i];
@@ -164,26 +178,124 @@
       renderTip();
     }
 
+    // ---------- ページをまたぐ手順 ----------
+    // 手順 i の要素を押すと、次の手順のページへ切り替わるか（次の手順が別のページで記録されている）
+    function leadsToNextPage(i) {
+      const nextStep = tour.steps[i + 1];
+      return Boolean(nextStep) && !sameUrl(nextStep.url, tour.steps[i].url);
+    }
+
+    // 別のページ用の手順 i を表示しているときの案内。
+    // 直前の手順がこのページで、その要素を押すと手順 i のページへ進むなら、それを押して移動する。
+    // URLを開き直すだけでは、フォーム送信（POST）の結果画面や、URLに一時的な値を含む画面へは移動できないため
+    function crossPageNotice(i) {
+      const prev = tour.steps[i - 1];
+      const canPress = Boolean(prev) && sameUrl(prev.url, location.href) && leadsToNextPage(i - 1)
+        && Boolean(M.locator.find(prev.target));
+      const canOpen = /^(https?|file):/.test(tour.steps[i].url);
+      // 同じタブで移動する。再生位置は保存済みなので、移動先で続きを再生する（service worker が自動で始める）
+      const openBtn = canOpen ? h('button', {
+        class: 'btn small', text: canPress ? 'URLで開く' : 'このページへ移動', disabled: moving,
+        title: '記録時のURLを開きます。移動先で続きを再生します。自動で始まらない場合は、ポップアップの「続きを再生」を押してください',
+        onclick: () => location.assign(tour.steps[i].url),
+      }) : null;
+      if (canPress) {
+        return h('p', { class: 'notice info' }, [
+          `この手順は次のページで案内します。前の手順「${prev.title}」を押して移動してください `,
+          h('button', {
+            class: 'btn small primary', text: '押して移動', disabled: moving,
+            onclick: () => pressToMove(() => M.locator.find(prev.target), i),
+          }),
+          openBtn ? ' ' : null,
+          openBtn,
+        ]);
+      }
+      return h('p', { class: 'notice' }, [
+        'この手順は別のページ用です。移動先: ', h('code', { text: tour.steps[i].url }),
+        openBtn ? ' ' : null,
+        openBtn,
+      ]);
+    }
+
+    // 記録時に押した要素を押して、ページを移動する。移動先では手順 toIndex から続ける。
+    // getEl: 押す要素を返す関数（確認ダイアログの間に要素が作り直されても、押す直前に探し直す）
+    async function pressToMove(getEl, toIndex) {
+      if (moving) return;
+      const my = token;
+      let el = getEl();
+      if (!el) return;
+      if (!linkOf(el)) {
+        const ok = await M.ask(layer, 'この要素を実際に押して、次のページへ移動します。\nフォームの送信など、データが登録・変更される場合があります。', [
+          { label: '押して移動', value: true, kind: 'primary' },
+          { label: 'キャンセル', value: false },
+        ]);
+        if (!ok || my !== token) return; // キャンセルされた / ダイアログの間に別の手順へ移った
+        el = getEl();
+        if (!el) return;
+      }
+
+      moving = true;
+      moveFailed = false;
+      renderTip();
+      savePosition(toIndex); // ページが切り替わったら、移動先で toIndex から続きを再生する
+      const from = location.href;
+      let leaving = false;
+      const onLeave = () => { leaving = true; };
+      window.addEventListener('beforeunload', onLeave);
+      const a = linkOf(el);
+      if (a && a.target && a.target !== '_self') {
+        location.assign(a.href); // 別タブで開くリンクも、再生位置を持つこのタブで開く
+      } else {
+        el.click();
+      }
+
+      const started = Date.now();
+      while (location.href === from && Date.now() - started < (leaving ? NAV_LEAVE_TIMEOUT_MS : NAV_TIMEOUT_MS)) {
+        await sleep(FIND_INTERVAL_MS);
+      }
+      window.removeEventListener('beforeunload', onLeave);
+      if (my !== token) return; // 待っている間に終了・一時停止された
+      moving = false;
+      if (location.href !== from) {
+        show(toIndex); // SPA: ページは読み込み直さず、URLだけ変わった
+      } else if (leaving) {
+        renderTip(); // 移動先の表示が遅い。そのまま待てば移動先で続くが、もう一度押せるようにしておく
+      } else {
+        moveFailed = true;
+        savePosition(index); // 移動しなかったので、再生位置を戻す
+        renderTip();
+      }
+    }
+
     // 現在の手順（index）の吹き出しを描く
     function renderTip() {
       const i = index;
       const step = tour.steps[i];
       const notices = [];
-      if (!sameUrl(step.url, location.href)) {
-        const urlCode = h('code', { text: step.url });
-        const children = ['この手順は別のページ用です。移動先: ', urlCode];
-        if (/^(https?|file):/.test(step.url)) {
-          // 同じタブで移動する。再生位置は保存済みなので、移動先で続きを再生する（service worker が自動で始める）
-          children.push(' ', h('button', {
-            class: 'btn small', text: 'このページへ移動',
-            title: '移動先で続きを再生します。自動で始まらない場合は、ポップアップの「続きを再生」を押してください',
-            onclick: () => location.assign(step.url),
-          }));
-        }
-        notices.push(h('p', { class: 'notice' }, children));
+      const onPage = sameUrl(step.url, location.href);
+      if (moving) {
+        notices.push(h('p', { class: 'notice info', text: 'ページを移動しています…' }));
+      } else if (moveFailed) {
+        notices.push(h('p', {
+          class: 'notice err',
+          text: '押してもページが切り替わりませんでした。入力が必要な画面などでは「一時停止」してから実際に操作してください',
+        }));
+      }
+      if (!onPage) {
+        notices.push(crossPageNotice(i));
+      } else if (!interactive && targetEl && leadsToNextPage(i)) {
+        // 見て再生ではページを操作できないので、記録時に押した要素をこちらで押して次のページへ進む
+        notices.push(h('p', { class: 'notice info' }, [
+          'この要素を押すと、次の手順のページへ移動します ',
+          h('button', {
+            class: 'btn small primary', text: '押して移動', disabled: moving,
+            onclick: () => pressToMove(() => targetEl, i + 1),
+          }),
+        ]));
       }
       if (!targetEl) {
-        notices.push(h('p', { class: 'notice err', text: 'この手順の要素が見つかりません' }));
+        // 別のページ用の手順で要素が無いのは当然なので、移動の案内だけを出す
+        if (onPage) notices.push(h('p', { class: 'notice err', text: 'この手順の要素が見つかりません' }));
       } else if (looseMatch) {
         notices.push(h('p', {
           class: 'notice',
